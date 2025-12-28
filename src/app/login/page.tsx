@@ -15,10 +15,15 @@ import {
 } from '@mui/material';
 import { signIn, signUp, type AuthState } from './actions';
 
-const initialState: AuthState = { error: null };
+const initialState: AuthState = { error: null, success: null };
 
 export default function LoginPage() {
   const [mode, setMode] = React.useState<'signin' | 'signup'>('signin');
+  const [origin, setOrigin] = React.useState('');
+
+  React.useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
 
   const action = mode === 'signin' ? signIn : signUp;
   const [state, formAction] = useFormState(action, initialState);
@@ -36,9 +41,11 @@ export default function LoginPage() {
             </Typography>
 
             {state.error && <Alert severity="error">{state.error}</Alert>}
+            {state.success && <Alert severity="success">{state.success}</Alert>}
 
             <Box component="form" action={formAction}>
               <Stack spacing={2}>
+                <input type="hidden" name="origin" value={origin} />
                 <TextField
                   name="email"
                   label="メールアドレス"
@@ -53,6 +60,11 @@ export default function LoginPage() {
                   required
                   fullWidth
                 />
+                {mode === 'signup' && (
+                  <Alert severity="info" sx={{ py: 0.5 }}>
+                    登録後、確認メールが届きます。メール内のリンクをクリックして登録を完了してください。
+                  </Alert>
+                )}
                 <Button variant="contained" type="submit" size="large">
                   {mode === 'signin' ? 'ログイン' : '新規登録'}
                 </Button>
@@ -72,10 +84,6 @@ export default function LoginPage() {
                 {mode === 'signin' ? '新規登録へ' : 'ログインへ'}
               </Button>
             </Stack>
-
-            <Typography variant="caption" color="text.secondary">
-              ※ Supabase側でメール確認を有効にしている場合、新規登録後に確認メールが届きます。
-            </Typography>
           </Stack>
         </CardContent>
       </Card>
