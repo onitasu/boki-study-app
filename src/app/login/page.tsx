@@ -1,13 +1,14 @@
 'use client';
 
 import * as React from 'react';
-import { useFormState } from 'react-dom';
+import { useFormState, useFormStatus } from 'react-dom';
 import {
   Alert,
   Box,
   Button,
   Card,
   CardContent,
+  CircularProgress,
   Divider,
   Stack,
   TextField,
@@ -16,6 +17,24 @@ import {
 import { signIn, signUp, type AuthState } from './actions';
 
 const initialState: AuthState = { error: null, success: null };
+
+function SubmitButton({ mode }: { mode: 'signin' | 'signup' }) {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button
+      variant="contained"
+      type="submit"
+      size="large"
+      disabled={pending}
+      startIcon={pending ? <CircularProgress size={20} color="inherit" /> : null}
+    >
+      {pending
+        ? (mode === 'signin' ? 'ログイン中...' : '登録中...')
+        : (mode === 'signin' ? 'ログイン' : '新規登録')}
+    </Button>
+  );
+}
 
 export default function LoginPage() {
   const [mode, setMode] = React.useState<'signin' | 'signup'>('signin');
@@ -65,9 +84,7 @@ export default function LoginPage() {
                     登録後、確認メールが届きます。メール内のリンクをクリックして登録を完了してください。
                   </Alert>
                 )}
-                <Button variant="contained" type="submit" size="large">
-                  {mode === 'signin' ? 'ログイン' : '新規登録'}
-                </Button>
+                <SubmitButton mode={mode} />
               </Stack>
             </Box>
 
