@@ -14,6 +14,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import { signIn, signUp, type AuthState } from './actions';
 
 const initialState: AuthState = { error: null, success: null };
@@ -39,6 +40,7 @@ function SubmitButton({ mode }: { mode: 'signin' | 'signup' }) {
 export default function LoginPage() {
   const [mode, setMode] = React.useState<'signin' | 'signup'>('signin');
   const [origin, setOrigin] = React.useState('');
+  const [registeredEmail, setRegisteredEmail] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setOrigin(window.location.origin);
@@ -46,6 +48,54 @@ export default function LoginPage() {
 
   const action = mode === 'signin' ? signIn : signUp;
   const [state, formAction] = useFormState(action, initialState);
+
+  // 登録成功時にメールアドレスを保存
+  React.useEffect(() => {
+    if (state.success && mode === 'signup') {
+      const form = document.querySelector('form');
+      const emailInput = form?.querySelector('input[name="email"]') as HTMLInputElement;
+      if (emailInput?.value) {
+        setRegisteredEmail(emailInput.value);
+      }
+    }
+  }, [state.success, mode]);
+
+  // メール確認待ち画面
+  if (registeredEmail) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+        <Card sx={{ width: '100%', maxWidth: 480 }}>
+          <CardContent>
+            <Stack spacing={3} alignItems="center" sx={{ py: 2 }}>
+              <MailOutlineIcon sx={{ fontSize: 64, color: 'primary.main' }} />
+              <Typography variant="h5" fontWeight={700} textAlign="center">
+                確認メールを送信しました
+              </Typography>
+              <Typography variant="body1" color="text.secondary" textAlign="center">
+                <strong>{registeredEmail}</strong> に確認メールを送信しました。
+              </Typography>
+              <Alert severity="info" sx={{ width: '100%' }}>
+                メールアプリを開いて、メール内のリンクをクリックして登録を完了してください。
+              </Alert>
+              <Typography variant="body2" color="text.secondary" textAlign="center">
+                メールが届かない場合は、迷惑メールフォルダをご確認ください。
+              </Typography>
+              <Divider sx={{ width: '100%' }} />
+              <Button
+                variant="text"
+                onClick={() => {
+                  setRegisteredEmail(null);
+                  setMode('signin');
+                }}
+              >
+                ログイン画面に戻る
+              </Button>
+            </Stack>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -60,7 +110,6 @@ export default function LoginPage() {
             </Typography>
 
             {state.error && <Alert severity="error">{state.error}</Alert>}
-            {state.success && <Alert severity="success">{state.success}</Alert>}
 
             <Box component="form" action={formAction}>
               <Stack spacing={2}>
