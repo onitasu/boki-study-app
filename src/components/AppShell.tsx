@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   AppBar,
@@ -39,6 +40,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const idx = NAV_ITEMS.findIndex((n) => pathname?.startsWith(n.href));
     return idx === -1 ? 0 : idx;
   }, [pathname]);
+
+  // Prefetch all navigation routes on mount
+  React.useEffect(() => {
+    NAV_ITEMS.forEach((item) => {
+      router.prefetch(item.href);
+    });
+  }, [router]);
 
   if (isAuthPage) {
     return (
@@ -82,13 +90,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <BottomNavigation
           showLabels
           value={currentIndex}
-          onChange={(_, newValue) => {
-            const item = NAV_ITEMS[newValue];
-            if (item) router.push(item.href);
-          }}
         >
           {NAV_ITEMS.map((item) => (
-            <BottomNavigationAction key={item.href} label={item.label} icon={item.icon} />
+            <BottomNavigationAction
+              key={item.href}
+              label={item.label}
+              icon={item.icon}
+              component={Link}
+              href={item.href}
+            />
           ))}
         </BottomNavigation>
       </Box>
