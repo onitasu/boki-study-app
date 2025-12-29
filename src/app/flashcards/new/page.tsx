@@ -28,6 +28,96 @@ import { createClient } from '@/lib/supabase/client';
 import type { FlashcardFolder } from '@/lib/types';
 
 type Subject = 'mixed' | 'commercial' | 'industrial';
+type LoadedImage = {
+  width: number;
+  height: number;
+  draw: (ctx: CanvasRenderingContext2D, width: number, height: number) => void;
+  cleanup: () => void;
+};
+
+const MAX_IMAGE_EDGE = 1600;
+const JPEG_QUALITY = 0.82;
+
+async function loadImageSource(file: File): Promise<LoadedImage> {
+  if (typeof createImageBitmap === 'function') {
+    const bitmap = await createImageBitmap(file);
+    return {
+      width: bitmap.width,
+      height: bitmap.height,
+      draw: (ctx, width, height) => ctx.drawImage(bitmap, 0, 0, width, height),
+      cleanup: () => bitmap.close(),
+    };
+  }
+
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = url;
+  if (typeof img.decode === 'function') {
+    await img.decode();
+  } else {
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('image decode failed'));
+    });
+  }
+  URL.revokeObjectURL(url);
+
+  return {
+    width: img.naturalWidth || img.width,
+    height: img.naturalHeight || img.height,
+    draw: (ctx, width, height) => ctx.drawImage(img, 0, 0, width, height),
+    cleanup: () => {},
+  };
+}
+
+async function compressImageFile(file: File): Promise<File> {
+  if (!file.type.startsWith('image/')) return file;
+
+  let source: LoadedImage | null = null;
+  try {
+    source = await loadImageSource(file);
+    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(source.width, source.height));
+    const targetWidth = Math.max(1, Math.round(source.width * scale));
+    const targetHeight = Math.max(1, Math.round(source.height * scale));
+
+    if (scale === 1 && file.size <= 1_500_000 && file.type !== 'image/heic') {
+      source.cleanup();
+      return file;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      source.cleanup();
+      return file;
+    }
+
+    source.draw(ctx, targetWidth, targetHeight);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY)
+    );
+    source.cleanup();
+
+    if (!blob) return file;
+    const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], name, { type: 'image/jpeg' });
+  } catch {
+    source?.cleanup();
+    return file;
+  }
+}
+
+async function compressImageList(files: File[]): Promise<File[]> {
+  const out: File[] = [];
+  for (const file of files) {
+    const converted = await compressImageFile(file);
+    out.push(converted);
+  }
+  return out;
+}
 
 export default function NewFlashcardsPage() {
   const router = useRouter();
@@ -38,6 +128,8 @@ export default function NewFlashcardsPage() {
   const [memo, setMemo] = React.useState<string>('');
   const [files, setFiles] = React.useState<File[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
+  const [processingImages, setProcessingImages] = React.useState<boolean>(false);
+  const [processingError, setProcessingError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [folders, setFolders] = React.useState<FlashcardFolder[]>([]);
   const [folderId, setFolderId] = React.useState<string>('');
@@ -71,9 +163,23 @@ export default function NewFlashcardsPage() {
     };
   }, [supabase]);
 
-  function onFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
     const list = Array.from(e.target.files ?? []);
-    setFiles(list);
+    if (list.length === 0) {
+      setFiles([]);
+      return;
+    }
+    setProcessingImages(true);
+    setProcessingError(null);
+    try {
+      const processed = await compressImageList(list);
+      setFiles(processed);
+    } catch {
+      setFiles(list);
+      setProcessingError('画像の圧縮に失敗しました。元の画像で続行します。');
+    } finally {
+      setProcessingImages(false);
+    }
   }
 
   async function createFolder() {
@@ -108,6 +214,10 @@ export default function NewFlashcardsPage() {
 
   async function generate() {
     setError(null);
+    if (processingImages) {
+      setError('画像の準備中です。少し待ってからもう一度お試しください。');
+      return;
+    }
     if (files.length === 0 && memo.trim() === '') {
       setError('画像またはメモのどちらかは入力してください。');
       return;
@@ -266,6 +376,11 @@ export default function NewFlashcardsPage() {
               placeholder="例：材料副費は材料費に含める。仕掛品の期首/期末の意味が混乱した…"
             />
 
+            {processingImages ? (
+              <Alert severity="info">画像を最適化中です。完了まで少しお待ちください。</Alert>
+            ) : null}
+            {processingError ? <Alert severity="warning">{processingError}</Alert> : null}
+
             <Alert severity="info">
               送信した画像とメモをもとに、AIが「問題文・ヒント・回答・解説」を作成します。
               著作権保護のため、教材の文章をそのまま長文で転載しない形で生成します。
@@ -275,9 +390,9 @@ export default function NewFlashcardsPage() {
               onClick={generate}
               variant="contained"
               startIcon={loading ? <CircularProgress size={18} /> : <AutoAwesomeIcon />}
-              disabled={loading}
+              disabled={loading || processingImages}
             >
-              {loading ? '生成中…' : 'AIでフラッシュカード作成'}
+              {loading ? '生成中…' : processingImages ? '画像準備中…' : 'AIでフラッシュカード作成'}
             </Button>
           </Stack>
         </CardContent>
