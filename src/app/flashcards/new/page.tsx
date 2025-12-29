@@ -9,6 +9,10 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   InputLabel,
   MenuItem,
@@ -19,11 +23,15 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import CreateNewFolderIcon from '@mui/icons-material/CreateNewFolder';
+import { createClient } from '@/lib/supabase/client';
+import type { FlashcardFolder } from '@/lib/types';
 
 type Subject = 'mixed' | 'commercial' | 'industrial';
 
 export default function NewFlashcardsPage() {
   const router = useRouter();
+  const supabase = React.useMemo(() => createClient(), []);
   const [title, setTitle] = React.useState<string>('');
   const [subject, setSubject] = React.useState<Subject>('mixed');
   const [count, setCount] = React.useState<number>(8);
@@ -31,13 +39,71 @@ export default function NewFlashcardsPage() {
   const [files, setFiles] = React.useState<File[]>([]);
   const [loading, setLoading] = React.useState<boolean>(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [folders, setFolders] = React.useState<FlashcardFolder[]>([]);
+  const [folderId, setFolderId] = React.useState<string>('');
+  const [folderDialogOpen, setFolderDialogOpen] = React.useState(false);
+  const [folderName, setFolderName] = React.useState('');
+  const [folderError, setFolderError] = React.useState<string | null>(null);
+  const [folderLoadError, setFolderLoadError] = React.useState<string | null>(null);
 
   const totalBytes = React.useMemo(() => files.reduce((sum, f) => sum + f.size, 0), [files]);
   const totalMB = React.useMemo(() => (totalBytes / 1024 / 1024).toFixed(1), [totalBytes]);
 
+  React.useEffect(() => {
+    let active = true;
+    async function loadFolders() {
+      setFolderLoadError(null);
+      const { data, error: loadError } = await supabase
+        .from('flashcard_folders')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!active) return;
+      if (loadError) {
+        console.error('[Flashcards] Folder load error:', loadError);
+        setFolderLoadError('フォルダの取得に失敗しました。');
+        return;
+      }
+      setFolders((data as FlashcardFolder[]) ?? []);
+    }
+    loadFolders();
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
+
   function onFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
     const list = Array.from(e.target.files ?? []);
     setFiles(list);
+  }
+
+  async function createFolder() {
+    const name = folderName.trim();
+    if (!name) {
+      setFolderError('フォルダ名を入力してください。');
+      return;
+    }
+    setFolderError(null);
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError || !user) {
+      setFolderError('ログイン情報の取得に失敗しました。');
+      return;
+    }
+    const { data, error: insertError } = await supabase
+      .from('flashcard_folders')
+      .insert({ user_id: user.id, name })
+      .select('*')
+      .single();
+    if (insertError || !data) {
+      setFolderError(`作成に失敗しました: ${insertError?.message ?? 'unknown error'}`);
+      return;
+    }
+    setFolders((prev) => [data as FlashcardFolder, ...prev]);
+    setFolderId(data.id);
+    setFolderName('');
+    setFolderDialogOpen(false);
   }
 
   async function generate() {
@@ -65,6 +131,7 @@ export default function NewFlashcardsPage() {
       fd.set('subject', subject);
       fd.set('count', String(count));
       fd.set('memo', memo);
+      if (folderId) fd.set('folder_id', folderId);
 
       for (const file of files) {
         fd.append('images', file);
@@ -142,6 +209,38 @@ export default function NewFlashcardsPage() {
               />
             </Stack>
 
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'flex-end' }}>
+              <FormControl fullWidth>
+                <InputLabel id="folder-label">フォルダ</InputLabel>
+                <Select
+                  labelId="folder-label"
+                  value={folderId}
+                  label="フォルダ"
+                  onChange={(e) => setFolderId(String(e.target.value))}
+                >
+                  <MenuItem value="">フォルダなし</MenuItem>
+                  {folders.map((folder) => (
+                    <MenuItem key={folder.id} value={folder.id}>
+                      {folder.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                variant="outlined"
+                startIcon={<CreateNewFolderIcon />}
+                onClick={() => {
+                  setFolderName('');
+                  setFolderError(null);
+                  setFolderDialogOpen(true);
+                }}
+              >
+                フォルダ作成
+              </Button>
+            </Stack>
+
+            {folderLoadError ? <Alert severity="error">{folderLoadError}</Alert> : null}
+
             <Box>
               <Button variant="outlined" component="label">
                 画像を選ぶ（複数OK）
@@ -183,6 +282,27 @@ export default function NewFlashcardsPage() {
           </Stack>
         </CardContent>
       </Card>
+
+      <Dialog open={folderDialogOpen} onClose={() => setFolderDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>フォルダを作成</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="フォルダ名"
+              value={folderName}
+              onChange={(e) => setFolderName(e.target.value)}
+              autoFocus
+            />
+            {folderError ? <Alert severity="error">{folderError}</Alert> : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFolderDialogOpen(false)}>キャンセル</Button>
+          <Button onClick={createFolder} variant="contained">
+            作成
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

@@ -35,8 +35,16 @@ Supabase の SQL Editor で、以下の SQL を **順番に** 実行してくだ
    - plans / themes / tasks 等のスキーマ + テーマseed
 2. `supabase/migrations/20251228093000_flashcards.sql`
    - flashcard_decks / flashcards（RLS含む）
+3. `supabase/migrations/20251228100000_flashcard_folders.sql`
+   - flashcard_folders + deckへのfolder_id追加
 
-### 3) 環境変数（.env.local）
+### 3) Storage（画像アップロード用）
+Supabase の SQL Editor で以下の SQL を実行し、画像保存用バケットとポリシーを作成してください。
+
+- `supabase/migrations/20251228094000_flashcard_images_storage.sql`
+  - `flashcard-images` バケット + ownerベースのRLS
+
+### 4) 環境変数（.env.local）
 `.env.local.example` をコピーして `.env.local` を作り、値を入れてください。
 
 必須:
@@ -47,7 +55,7 @@ Supabase の SQL Editor で、以下の SQL を **順番に** 実行してくだ
 任意:
 - `OPENAI_MODEL`（デフォルト: `gpt-4o-mini`）
 
-### 4) 起動
+### 5) 起動
 ```bash
 npm install
 npm run dev

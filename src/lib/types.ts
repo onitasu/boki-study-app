@@ -48,8 +48,16 @@ export interface FlashcardDeck {
   created_at: string;
   title: string | null;
   subject: Subject;
+  folder_id: string | null;
   memo: string | null;
   images: any[];
+}
+
+export interface FlashcardFolder {
+  id: string;
+  user_id: string;
+  created_at: string;
+  name: string;
 }
 
 export interface Flashcard {

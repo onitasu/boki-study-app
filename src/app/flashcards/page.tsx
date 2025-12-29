@@ -2,13 +2,13 @@ import Link from 'next/link';
 import { Stack, Typography, Button, Card, CardContent } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import { createClient } from '@/lib/supabase/server';
-import type { Flashcard, FlashcardDeck } from '@/lib/types';
+import type { Flashcard, FlashcardDeck, FlashcardFolder } from '@/lib/types';
 import FlashcardsView from '@/components/FlashcardsView';
 
 export default async function FlashcardsPage({
   searchParams,
 }: {
-  searchParams?: { deck?: string; status?: string };
+  searchParams?: { deck?: string; folder?: string; status?: string };
 }) {
   const supabase = createClient();
   const {
@@ -20,6 +20,7 @@ export default async function FlashcardsPage({
   }
 
   const selectedDeckId = (searchParams?.deck ?? '').trim() || null;
+  const selectedFolderId = (searchParams?.folder ?? '').trim() || null;
 
   const { data: decks, error: deckError } = await supabase
     .from('flashcard_decks')
@@ -29,6 +30,16 @@ export default async function FlashcardsPage({
 
   if (deckError) {
     return <Typography>デッキ取得に失敗しました: {deckError.message}</Typography>;
+  }
+
+  const { data: folders, error: folderError } = await supabase
+    .from('flashcard_folders')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false });
+
+  if (folderError) {
+    return <Typography>フォルダ取得に失敗しました: {folderError.message}</Typography>;
   }
 
   let cardsQuery = supabase
@@ -79,8 +90,10 @@ export default async function FlashcardsPage({
       ) : (
         <FlashcardsView
           initialDecks={(decks as FlashcardDeck[]) ?? []}
+          initialFolders={(folders as FlashcardFolder[]) ?? []}
           initialCards={(cards as Flashcard[]) ?? []}
           selectedDeckId={selectedDeckId}
+          selectedFolderId={selectedFolderId}
         />
       )}
     </Stack>
